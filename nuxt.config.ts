@@ -1,9 +1,11 @@
 export default defineNuxtConfig({
+  compatibilityDate: '2026-03-01',
   modules: ['@nuxthub/core'],
   runtimeConfig: {
     uploadToken: '',
   },
   nitro: {
+    preset: 'cloudflare_module',
     cloudflare: {
       wrangler: {
         name: 'screepsplus-maps',

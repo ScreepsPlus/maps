@@ -10,8 +10,8 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
-    "@nuxthub/core": "latest",
-    "nuxt": "^3.15.0"
+    "@nuxthub/core": "^0.10.6",
+    "nuxt": "^4.3.1"
   },
   "devDependencies": {
     "wrangler": "^4.69.0"

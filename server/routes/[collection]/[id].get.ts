@@ -29,17 +29,27 @@ export default defineEventHandler(async (event) => {
   }
 
   setHeader(event, 'Cache-Control', 'public, max-age=3600, must-revalidate')
-  setHeader(event, 'Content-Type', 'application/json')
 
   const blobKey = `${collection}/${id}.json`
 
+  let isGzip = false
   try {
     const meta = await blob.head(blobKey)
-    if (meta.customMetadata?.contentEncoding) {
-      setHeader(event, 'Content-Encoding', meta.customMetadata.contentEncoding)
-    }
+    isGzip = meta.customMetadata?.contentEncoding === 'gzip'
   } catch {
-    // File not found — blob.serve will return 404
+    throw createError({ statusCode: 404, message: 'Not found' })
+  }
+
+  setHeader(event, 'Content-Type', 'application/json')
+
+  if (isGzip) {
+    // Decompress server-side: CF Workers auto-compress responses, so setting
+    // Content-Encoding: gzip would result in double-compression.
+    const raw = await blob.get(blobKey)
+    if (!raw) throw createError({ statusCode: 404, message: 'Not found' })
+    return new Response(
+      raw.stream().pipeThrough(new DecompressionStream('gzip')),
+    ).text()
   }
 
   return blob.serve(event, blobKey)

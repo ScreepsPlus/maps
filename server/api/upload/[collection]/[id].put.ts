@@ -21,6 +21,10 @@ const CONTROLLER_CLEAR = ['user', 'autoSpawn', 'progress', 'safeMode', 'safeMode
 function sanitize(data: Record<string, unknown>): void {
   if (!Array.isArray(data.rooms)) return
   for (const room of data.rooms as Record<string, unknown>[]) {
+    // Rooms whose terrain is entirely walls are out of bounds
+    if (typeof room.terrain === 'string' && /^1+$/.test(room.terrain)) {
+      room.status = 'out of borders'
+    }
     if (!Array.isArray(room.objects)) continue
     // Pass 1: strip player-state fields from controllers (keep the object)
     for (const obj of room.objects as Record<string, unknown>[]) {

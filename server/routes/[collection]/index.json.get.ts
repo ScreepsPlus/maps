@@ -20,10 +20,24 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: 'Not found' })
   }
 
-  const entries = await kv.get<IndexEntry[]>(`index:${collection}`) ?? []
+  // Per-entry keys: `${collection}:${id}` → IndexEntry
+  const keys = await kv.keys(`${collection}:`)
+  const entries = (await Promise.all(keys.map(k => kv.get<IndexEntry>(k)))).filter(Boolean) as IndexEntry[]
 
-  setHeader(event, 'Cache-Control', 'public, max-age=60, stale-while-revalidate=3600')
+  // Content-based ETag for conditional request support (no-cache so clients always revalidate,
+  // but get a fast 304 when nothing has changed)
+  const body = JSON.stringify(entries)
+  const hashBuffer = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(body))
+  const etag = `"${Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')}"`
+
+  if (getHeader(event, 'if-none-match') === etag) {
+    setResponseStatus(event, 304)
+    return null
+  }
+
+  setHeader(event, 'ETag', etag)
+  setHeader(event, 'Cache-Control', 'no-cache')
   setHeader(event, 'Content-Type', 'application/json')
 
-  return entries
+  return body
 })

@@ -18,10 +18,11 @@ for COLLECTION in maps sectors; do
     TMP="$(mktemp /tmp/migrate_XXXXXX.json)"
     PREFIX="${COLLECTION%s}"  # maps→map, sectors→sector
     curl -fsS "$BASE_OLD/$COLLECTION/$PREFIX-$ID.json" -o "$TMP"
-    curl -fsS -X PUT "$BASE_NEW/api/upload/$COLLECTION/$ID" \
+    gzip -c "$TMP" | curl -fsS -X PUT "$BASE_NEW/api/upload/$COLLECTION/$ID" \
       -H "Authorization: Bearer $TOKEN" \
       -H "Content-Type: application/json" \
-      --data-binary "@$TMP"
+      -H "Content-Encoding: gzip" \
+      --data-binary @-
     echo ""
     rm -f "$TMP"
   done <<< "$IDS"

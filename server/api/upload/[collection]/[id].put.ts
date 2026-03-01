@@ -71,17 +71,47 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, message: 'Unauthorized' })
   }
 
-  // Read and parse JSON body
-  const body = await readBody<Record<string, unknown>>(event)
-  if (typeof body !== 'object' || body === null) {
-    throw createError({ statusCode: 400, message: 'Invalid JSON body' })
-  }
-
   const blobKey = `${collection}/${id}.json`
-  const bodyStr = JSON.stringify(body)
 
-  // Store file in R2
-  await blob.put(blobKey, bodyStr, { contentType: 'application/json' })
+  // Support gzip-encoded uploads for large files (Content-Encoding: gzip).
+  // The compressed bytes are stored as-is in R2; the body is also fully
+  // decompressed for dimension extraction.
+  const contentEncoding = getHeader(event, 'content-encoding')
+  let body: Record<string, unknown>
+
+  if (contentEncoding === 'gzip') {
+    const rawBody = await readRawBody(event, false)
+    if (!rawBody || rawBody.length === 0) {
+      throw createError({ statusCode: 400, message: 'Empty body' })
+    }
+
+    // Decompress for JSON parsing
+    const rawBytes = rawBody instanceof Buffer
+      ? new Uint8Array(rawBody.buffer, rawBody.byteOffset, rawBody.byteLength)
+      : new Uint8Array(rawBody as ArrayBuffer)
+
+    const decompressedText = await new Response(
+      new ReadableStream({
+        start(c) { c.enqueue(rawBytes); c.close() },
+      }).pipeThrough(new DecompressionStream('gzip'))
+    ).text()
+
+    body = JSON.parse(decompressedText)
+
+    // Store original compressed bytes in R2
+    await blob.put(blobKey, rawBytes, {
+      contentType: 'application/json',
+      customMetadata: { contentEncoding: 'gzip' },
+    })
+  } else {
+    // Read and parse JSON body
+    body = await readBody<Record<string, unknown>>(event)
+    if (typeof body !== 'object' || body === null) {
+      throw createError({ statusCode: 400, message: 'Invalid JSON body' })
+    }
+
+    await blob.put(blobKey, JSON.stringify(body), { contentType: 'application/json' })
+  }
 
   // Build index entry
   let entry: IndexEntry
@@ -92,12 +122,8 @@ export default defineEventHandler(async (event) => {
     entry = { id } as SectorEntry
   }
 
-  // Read current KV index, upsert entry, write back
-  const kvKey = `index:${collection}`
-  const current = await kv.get<IndexEntry[]>(kvKey) ?? []
-  const filtered = current.filter((e) => e.id !== id)
-  filtered.push(entry)
-  await kv.set(kvKey, filtered)
+  // Write per-entry KV key (atomic single write, no read-modify-write race)
+  await kv.set(`${collection}:${id}`, entry)
 
   return { ok: true, id }
 })

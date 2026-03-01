@@ -23,5 +23,17 @@ export default defineEventHandler(async (event) => {
 
   setHeader(event, 'Cache-Control', 'public, max-age=3600, must-revalidate')
 
-  return blob.serve(event, `${collection}/${path}`)
+  const blobKey = `${collection}/${path}`
+
+  // For gzip-stored blobs, set Content-Encoding so clients decompress automatically
+  try {
+    const meta = await blob.head(blobKey)
+    if (meta.customMetadata?.contentEncoding) {
+      setHeader(event, 'Content-Encoding', meta.customMetadata.contentEncoding)
+    }
+  } catch {
+    // File not found — blob.serve will return 404
+  }
+
+  return blob.serve(event, blobKey)
 })

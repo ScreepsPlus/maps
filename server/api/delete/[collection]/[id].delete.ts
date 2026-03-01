@@ -24,14 +24,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, message: 'Unauthorized' })
   }
 
-  // Delete file from R2
+  // Delete file from R2 and remove its per-entry KV key (atomic, no read needed)
   await blob.delete(`${collection}/${id}.json`)
-
-  // Read KV index, filter out the deleted id, write back
-  const kvKey = `index:${collection}`
-  const current = await kv.get<IndexEntry[]>(kvKey) ?? []
-  const updated = current.filter((e) => e.id !== id)
-  await kv.set(kvKey, updated)
+  await kv.del(`${collection}:${id}`)
 
   return { ok: true, id }
 })

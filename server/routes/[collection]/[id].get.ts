@@ -8,24 +8,31 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: 'Not found' })
   }
 
-  let path = getRouterParam(event, 'path') ?? ''
+  let id = getRouterParam(event, 'id') ?? ''
 
-  // Strip .gz suffix for legacy URL backward compat
-  if (path.endsWith('.gz')) {
-    path = path.slice(0, -3)
+  // Normalise to canonical ID — redirect if the URL wasn't already canonical
+  let redirectNeeded = false
+
+  if (id.endsWith('.json')) {
+    id = id.slice(0, -5)
+    redirectNeeded = true
   }
 
-  // Strip collection-singular prefix for legacy URLs (e.g. map-<id>.json → <id>.json)
   const prefix = collection.replace(/s$/, '') + '-'
-  if (path.startsWith(prefix)) {
-    path = path.slice(prefix.length)
+  if (id.startsWith(prefix)) {
+    id = id.slice(prefix.length)
+    redirectNeeded = true
+  }
+
+  if (redirectNeeded) {
+    return sendRedirect(event, `/${collection}/${id}`, 301)
   }
 
   setHeader(event, 'Cache-Control', 'public, max-age=3600, must-revalidate')
+  setHeader(event, 'Content-Type', 'application/json')
 
-  const blobKey = `${collection}/${path}`
+  const blobKey = `${collection}/${id}.json`
 
-  // For gzip-stored blobs, set Content-Encoding so clients decompress automatically
   try {
     const meta = await blob.head(blobKey)
     if (meta.customMetadata?.contentEncoding) {

@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="page">
     <h1>Screeps Private Server Maps</h1>
 
     <section>
@@ -34,14 +34,16 @@ serverConfig:
             <th>Width</th>
             <th>Height</th>
             <th>Download</th>
+            <th>View</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="map in sortedMaps" :key="map.id">
+          <tr v-for="map in sortedMaps" :key="map.id" class="clickable" @click="navigateTo(`/maps/${map.id}/view`)">
             <td>{{ map.id }}</td>
             <td>{{ map.width }}</td>
             <td>{{ map.height }}</td>
-            <td><a :href="`/maps/${map.id}.json`">JSON</a></td>
+            <td><a :href="`/maps/${map.id}`" @click.stop>JSON</a></td>
+            <td><NuxtLink :to="`/maps/${map.id}/view`" @click.stop>View</NuxtLink></td>
           </tr>
         </tbody>
       </table>
@@ -77,53 +79,41 @@ const sortedMaps = computed(() => {
 </script>
 
 <style scoped>
-body {
-  font-family: sans-serif;
+.page {
   max-width: 900px;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 1.5rem 1rem;
 }
 
-h1, h2 {
-  margin-top: 2rem;
-}
+h1 { margin-top: 0; }
+h2 { margin-top: 2rem; color: #ccc; }
 
-pre {
-  background: #f4f4f4;
-  padding: 0.75rem 1rem;
-  border-radius: 4px;
-  overflow-x: auto;
-}
-
-code {
-  font-family: monospace;
-}
+p { color: #aaa; line-height: 1.6; }
 
 table {
   border-collapse: collapse;
   width: 100%;
 }
 
-th, td {
+th {
   text-align: left;
   padding: 0.4rem 0.75rem;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid #333;
+  color: #888;
+  font-weight: normal;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-th {
-  background: #f0f0f0;
+td {
+  text-align: left;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid #222;
+  font-family: monospace;
+  font-size: 0.9rem;
 }
 
-a {
-  color: #0070f3;
-}
-
-ul {
-  list-style: none;
-  padding: 0;
-}
-
-li {
-  padding: 0.2rem 0;
-}
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: #1a1a1a; }
 </style>

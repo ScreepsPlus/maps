@@ -15,6 +15,32 @@ type IndexEntry = MapEntry | SectorEntry
 
 const ROOM_KEY_RE = /^([WE])(\d+)([NS])(\d+)$/
 
+// Fields deleted from controllers (player-state, not map-state)
+const CONTROLLER_CLEAR = ['user', 'autoSpawn', 'progress', 'safeMode', 'safeModeAvailable', 'safeModeCooldown', 'downgradeTime', 'isPowerEnabled']
+
+function sanitize(data: Record<string, unknown>): void {
+  if (!Array.isArray(data.rooms)) return
+  for (const room of data.rooms as Record<string, unknown>[]) {
+    if (!Array.isArray(room.objects)) continue
+    // Pass 1: strip player-state fields from controllers (keep the object)
+    for (const obj of room.objects as Record<string, unknown>[]) {
+      if (obj.type === 'controller') {
+        for (const f of CONTROLLER_CLEAR) delete obj[f]
+        obj.level = 0
+      }
+    }
+    // Pass 2: drop all remaining objects that are owned by a player
+    room.objects = (room.objects as Record<string, unknown>[]).filter(obj => !('user' in obj))
+  }
+}
+
+async function gzipText(text: string): Promise<Uint8Array> {
+  const stream = new ReadableStream({
+    start(c) { c.enqueue(new TextEncoder().encode(text)); c.close() },
+  }).pipeThrough(new CompressionStream('gzip'))
+  return new Uint8Array(await new Response(stream).arrayBuffer())
+}
+
 function extractDimensions(data: Record<string, unknown>): { width: number; height: number } {
   // Use top-level width/height if present in the file
   if (data.width !== undefined && data.height !== undefined) {
@@ -73,45 +99,37 @@ export default defineEventHandler(async (event) => {
 
   const blobKey = `${collection}/${id}.json`
 
-  // Support gzip-encoded uploads for large files (Content-Encoding: gzip).
-  // The compressed bytes are stored as-is in R2; the body is also fully
-  // decompressed for dimension extraction.
-  const contentEncoding = getHeader(event, 'content-encoding')
+  // Parse body — accept gzip-encoded uploads for large files
   let body: Record<string, unknown>
 
-  if (contentEncoding === 'gzip') {
+  if (getHeader(event, 'content-encoding') === 'gzip') {
     const rawBody = await readRawBody(event, false)
     if (!rawBody || rawBody.length === 0) {
       throw createError({ statusCode: 400, message: 'Empty body' })
     }
-
-    // Decompress for JSON parsing
     const rawBytes = rawBody instanceof Buffer
       ? new Uint8Array(rawBody.buffer, rawBody.byteOffset, rawBody.byteLength)
       : new Uint8Array(rawBody as ArrayBuffer)
-
-    const decompressedText = await new Response(
+    const text = await new Response(
       new ReadableStream({
         start(c) { c.enqueue(rawBytes); c.close() },
       }).pipeThrough(new DecompressionStream('gzip'))
     ).text()
-
-    body = JSON.parse(decompressedText)
-
-    // Store original compressed bytes in R2
-    await blob.put(blobKey, rawBytes, {
-      contentType: 'application/json',
-      customMetadata: { contentEncoding: 'gzip' },
-    })
+    body = JSON.parse(text)
   } else {
-    // Read and parse JSON body
     body = await readBody<Record<string, unknown>>(event)
     if (typeof body !== 'object' || body === null) {
       throw createError({ statusCode: 400, message: 'Invalid JSON body' })
     }
-
-    await blob.put(blobKey, JSON.stringify(body), { contentType: 'application/json' })
   }
+
+  // Sanitize then store compressed
+  sanitize(body)
+  const compressed = await gzipText(JSON.stringify(body))
+  await blob.put(blobKey, compressed, {
+    contentType: 'application/json',
+    customMetadata: { contentEncoding: 'gzip' },
+  })
 
   // Build index entry
   let entry: IndexEntry

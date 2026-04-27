@@ -15,6 +15,9 @@ export default defineNuxtConfig({
       cloudflare: {
         wrangler: {
           name: 'screepsplus-maps',
+          limits: {
+            maxDuration: 600,
+          },
         },
       },
     },

@@ -114,7 +114,7 @@ export default defineEventHandler(async (event) => {
     const rawBytes = rawBody instanceof Buffer
       ? new Uint8Array(rawBody.buffer, rawBody.byteOffset, rawBody.byteLength)
       : new Uint8Array(rawBody as ArrayBuffer)
-    const text = await new Response(
+    let text = await new Response(
       new ReadableStream({
         start(c) { c.enqueue(rawBytes); c.close() },
       }).pipeThrough(new DecompressionStream('gzip'))
@@ -138,8 +138,7 @@ export default defineEventHandler(async (event) => {
     entry = { id } as SectorEntry
   }
 
-  const compressed = await gzipText(JSON.stringify(body))
-  body = null
+  let compressed = await gzipText(JSON.stringify(body))
 
   await blob.put(blobKey, compressed, {
     contentType: 'application/json',

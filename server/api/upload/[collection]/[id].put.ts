@@ -120,6 +120,7 @@ export default defineEventHandler(async (event) => {
       }).pipeThrough(new DecompressionStream('gzip'))
     ).text()
     body = JSON.parse(text)
+    text = null
   } else {
     body = await readBody<Record<string, unknown>>(event)
     if (typeof body !== 'object' || body === null) {
@@ -127,24 +128,25 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // Sanitize then store compressed
   sanitize(body)
-  const compressed = await gzipText(JSON.stringify(body))
-  await blob.put(blobKey, compressed, {
-    contentType: 'application/json',
-    customMetadata: { contentEncoding: 'gzip' },
-  })
 
-  // Build index entry
   let entry: IndexEntry
   if (collection === 'maps') {
-    const { width, height } = extractDimensions(body)
-    entry = { id, width, height } as MapEntry
+    const dims = extractDimensions(body)
+    entry = { id, width: dims.width, height: dims.height } as MapEntry
   } else {
     entry = { id } as SectorEntry
   }
 
-  // Write per-entry KV key (atomic single write, no read-modify-write race)
+  const compressed = await gzipText(JSON.stringify(body))
+  body = null
+
+  await blob.put(blobKey, compressed, {
+    contentType: 'application/json',
+    customMetadata: { contentEncoding: 'gzip' },
+  })
+  compressed = null
+
   await kv.set(`${collection}:${id}`, entry)
 
   return { ok: true, id }

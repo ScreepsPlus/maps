@@ -18,6 +18,8 @@ export default defineNuxtConfig({
           limits: {
             maxDuration: 600,
           },
+          workersLogpush: true,
+          metrics: 'metrics.screepspl.us',
         },
       },
     },
